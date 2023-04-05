@@ -4,7 +4,7 @@ The following is a compilation of small projects to demonstrate various skills:
 
 UFO Sightings R Shiny App
 
-SQL in R
+Machine Learning in Python
 
 Text Mining in R
 
