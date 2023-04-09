@@ -8,3 +8,6 @@ Machine Learning in Python
 * spam_detection1: Used a descision tree classifier to detect spam emails from a large dataset achieving an accuracy of about 93%
 * spam_detection1: Used a random forest classifier to detect spam emails from a large dataset achieving an accuracy of about 97% and comparing the effects of different initializtion settings 
 * spam_detection1: Used a support vector machine to detect spam emails from a large dataset achieving a best accuracy of about 99%. I also analyzed the effects of various kernel functions and regularization parameters.
+Sports Betting Analysis in Hadoop
+* Using tools like Hive, Spark and MapReduce, I analyzed a historical MLB dataset containing information about games from the previous few seasons.
+* I found some trends and information that may be useful to sports bettors.
