@@ -11,3 +11,5 @@ Machine Learning in Python
 Sports Betting Analysis in Hadoop
 * Using tools like Hive, Spark and MapReduce, I analyzed a historical MLB dataset containing information about games from the previous few seasons.
 * I found some trends and information that may be useful to sports bettors.
+Climate Change - A collection of machine learning models centered around climate change 
+* 
