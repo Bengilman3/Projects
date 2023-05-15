@@ -18,3 +18,4 @@ Climate Change - A collection of machine learning models centered around climate
 * Identifying Crops.ipynb: Implemented a Logistic Regression model to identify crops on a given area of land using data collected from Sentinel-2 (a satelite that can be used to map changes in land cover and to monitor the world's forests) containing 13 spectral bands.
 * Dengue_Fever_Prediction.ipynb: Used various machine learning methods (Poisson GlM, Linear Regression, Artificial Nueral Network) to predict the number of cases of Dengue Fever in a given time interval.
 * Predicting building energy use.ipynb: Implemented a Linear Regression model to predict how much energy is used by a building.
+* GAN_Methane_Plumes.ipynb: Created and developed a GAN to generate simulated data to replicate Methane plumes because of a lack of data. Then implemented a Convolutional nueral network to test the accuracy of the classifier, given the more abundant data.
