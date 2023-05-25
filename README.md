@@ -11,7 +11,7 @@ Machine Learning in Python - Various machine learning projects
 * stroke_and_diabetes_ads_analysis: Conducted an analysis of an automated decision system designed to predict whether or not a person has had a stroke based on a multitude of factors relating to lifestyle choices and overall health.  
 
 Sports Betting Analysis in Hadoop - An analysis of historical sports betting data
-* Using tools like Hive, Spark and MapReduce, I analyzed a historical MLB dataset containing information about games from the previous few seasons.
+* Using Hadoop tools like Hive, Spark and MapReduce, I analyzed a historical MLB dataset containing information about games from the previous few seasons.
 * I found some trends and information that may be useful to sports bettors.   
 
 Climate Change - A collection of machine learning models centered around climate change 
