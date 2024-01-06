@@ -20,3 +20,6 @@ Climate Change - A collection of machine learning models centered around climate
 * Dengue_Fever_Prediction.ipynb: Used various machine learning methods (Poisson GlM, Linear Regression, Artificial Nueral Network) to predict the number of cases of Dengue Fever in a given time interval.
 * Predicting building energy use.ipynb: Implemented a Linear Regression model to predict how much energy is used by a building.
 * GAN_Methane_Plumes.ipynb: Created and developed a GAN to generate simulated data to replicate Methane plumes because of a lack of data. Then implemented a Convolutional nueral network to test the accuracy of the classifier, given the more abundant data.
+myShortcuts - A collection of machine learning models centered around climate change
+
+
