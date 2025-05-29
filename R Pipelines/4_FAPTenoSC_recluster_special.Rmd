@@ -1,0 +1,39 @@
+
+```{r}
+Idents(data.integrated_inj) <- "cellid"
+FAPSCTeno_inj_sub<- subset(data.integrated_inj,idents=c("FAPs","Tenocytes","Satellite Cells"))
+
+
+FAPSCTeno_inj_sub <- NormalizeData(FAPSCTeno_inj_sub, verbose = T)
+FAPSCTeno_inj_sub <- FindVariableFeatures(FAPSCTeno_inj_sub, selection.method = "vst", nfeatures = 2500, verbose = T)
+FAPSCTeno_inj_sub <- ScaleData(FAPSCTeno_inj_sub, features=rownames(FAPSCTeno_inj_sub),verbose = T)
+FAPSCTeno_inj_sub <- RunPCA(FAPSCTeno_inj_sub, pc.genes = FAPSCTeno_inj_sub@var.genes, npcs = 30, verbose = T)
+ElbowPlot(FAPSCTeno_inj_sub, ndims = 30)
+```
+
+```{r}
+
+FAPSCTeno_inj_sub <- FindNeighbors(FAPSCTeno_inj_sub, dims = 1:17)
+FAPSCTeno_inj_sub <- FindClusters(FAPSCTeno_inj_sub, resolution = 1.0)
+FAPSCTeno_inj_sub <- RunUMAP(FAPSCTeno_inj_sub, dims = 1:17,metric = 'euclidean')
+```
+
+
+
+```{r fig.height=4, fig.width=4}
+## Plotting and having a look at the data
+color.vector <- c( brewer.pal(12, "Set3"),brewer.pal(8, "Set1"), brewer.pal(8, "Dark2"), brewer.pal(8, "Accent"),brewer.pal(8, "Pastel1"))
+DimPlot(FAPSCTeno_inj_sub, reduction = "umap", pt.size = 0.1, label = T, cols = color.vector,repel=T)+NoLegend()
+
+
+table(FAPSCTeno_inj_sub@meta.data$RNA_snn_res.1, FAPSCTeno_inj_sub@meta.data$sample)
+```
+
+
+```{r fig.height=4, fig.width=7}
+DotPlot(FAPSCTeno_inj_sub,features=c("Tnmd","Fmod","Pdgfra","Pax7","Myod1","Myf5","Myog","Cd68","Ly6c2","Adgre1","Rgs5","Mpz"),  cols = c("lightgrey", "#35553B"))+ RotatedAxis() + ylab(NULL)+xlab('Gene') +  theme(
+
+                    axis.title.x = element_text(size = 16),
+                    axis.text.y = element_text(size = 16),
+                    axis.text.x = element_text(size = 16))
+```

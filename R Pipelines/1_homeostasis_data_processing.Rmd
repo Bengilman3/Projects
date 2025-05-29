@@ -1,0 +1,216 @@
+
+```{r fig.height=4.5, fig.width=6}
+# Load packages providing functions
+library(Seurat)
+library(dplyr)
+library(patchwork)
+library(Matrix)
+library(cowplot)
+library(ggplot2)
+library(RColorBrewer)
+library(ggrepel)
+library(future)
+library(tidyverse)
+library(reshape2)
+# Load the sample dataset
+```
+
+
+
+```{r}
+# do you want to change the mt threshold?
+
+
+######## Process Depleted and Control datasets
+# For each condition, we have two replicates (i.e. Control1/2; Depleted1/2)
+data.Control1 <- Read10X(data.dir = "C:/Users/bg/Documents/data/INJ2")
+data.Control2 <- Read10X(data.dir = "C:/Users/bg/Documents/data/INJ1")
+data.Depleted1 <- Read10X(data.dir = "C:/Users/bg/Documents/data/ABINJ1")
+data.Depleted2 <- Read10X(data.dir = "C:/Users/bg/Documents/data/ABINJ2")
+
+data.Control1 <- CreateSeuratObject(data.Control1, assay = "RNA",
+                                   min.cells = 3, # Include genes with detected expression in at least this many cells (3 cells)
+                                   min.features = 200, # Include cells where at least this many genes are detected (200 genes)
+                                   project = 'Control1')
+data.Control2 <- CreateSeuratObject(data.Control2, assay = "RNA",
+                                   min.cells = 3, # Include genes with detected expression in at least this many cells (3 cells)
+                                   min.features = 200, # Include cells where at least this many genes are detected (200 genes)
+                                   project = 'Control2')
+
+data.Control <- merge (data.Control1,data.Control2)
+
+data.Control <- RenameCells(data.Control, add.cell.id = "Control")
+data.Control@meta.data$sample <- "Control"
+data.Control[["percent.mt"]] <- PercentageFeatureSet(data.Control, pattern = "^mt-")
+data.Control[["percent.ribo"]] <- PercentageFeatureSet(data.Control, pattern = "^rp")
+VlnPlot(data.Control, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, pt.size = 0.01)
+data.Control_clean <- subset(data.Control, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 20)
+
+data.Depleted1 <- CreateSeuratObject(data.Depleted1, assay = "RNA",
+                                   min.cells = 3, # Include genes with detected expression in at least this many cells (3 cells)
+                                   min.features = 200, # Include cells where at least this many genes are detected (200 genes)
+                                   project = 'Depleted1')
+data.Depleted2 <- CreateSeuratObject(data.Depleted2, assay = "RNA",
+                                   min.cells = 3, # Include genes with detected expression in at least this many cells (3 cells)
+                                   min.features = 200, # Include cells where at least this many genes are detected (200 genes)
+                                   project = 'Depleted2')
+
+data.Depleted <- merge(data.Depleted1,data.Depleted2)
+data.Depleted <- RenameCells(data.Depleted, add.cell.id = "Depleted")
+data.Depleted@meta.data$sample <- "Depleted"
+data.Depleted[["percent.mt"]] <- PercentageFeatureSet(data.Depleted, pattern = "^mt-")
+data.Depleted[["percent.ribo"]] <- PercentageFeatureSet(data.Depleted, pattern = "^rp")
+VlnPlot(data.Depleted, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, pt.size = 0.01)
+data.Depleted_clean <- subset(data.Depleted, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 20)
+
+
+data.integrated_homeo <- merge(data.Control_clean,data.Depleted_clean)
+
+# In Seurat V5, RNA assays from different samples are stored in separate layers. To analyze the cells as a single sample, integrate these layers.
+data.integrated_homeo[["RNA"]] <- JoinLayers(data.integrated_homeo[["RNA"]])
+
+
+```
+
+```{r}
+data.integrated_homeo <- NormalizeData(data.integrated_homeo, verbose = T)
+data.integrated_homeo <- FindVariableFeatures(data.integrated_homeo, selection.method = "vst", nfeatures = 2500, verbose = T)
+data.integrated_homeo <- ScaleData(data.integrated_homeo, features=rownames(data.integrated_homeo),verbose = T)
+data.integrated_homeo <- RunPCA(data.integrated_homeo, pc.genes = data.integrated_homeo@var.genes, npcs = 30, verbose = T)
+ElbowPlot(data.integrated_homeo, ndims = 30)
+```
+
+```{r}
+data.integrated_homeo <- FindNeighbors(data.integrated_homeo, dims = 1:17)
+data.integrated_homeo <- FindClusters(data.integrated_homeo, resolution = 1.0)
+data.integrated_homeo <- RunUMAP(data.integrated_homeo, dims = 1:17)
+```
+
+
+
+```{r fig.height=4, fig.width=6}
+## Plotting and having a look at the data
+color.vector <- c( brewer.pal(12, "Set3"),brewer.pal(8, "Set1"), brewer.pal(8, "Dark2"), brewer.pal(8, "Accent"),brewer.pal(8, "Pastel1"))
+DimPlot(data.integrated_homeo, reduction = "umap", pt.size = 0.1, label = T, cols = color.vector,repel=T,group.by="seurat_clusters",shuffle=T)
+
+DimPlot(data.integrated_homeo, reduction = "umap", pt.size = 0.1, label = F, group.by="sample", cols = c("blue","red"),shuffle=T)
+```
+```{r}
+table(data.integrated_homeo@meta.data$RNA_snn_res.1, data.integrated_homeo@meta.data$sample)
+```
+
+
+```{r}
+#Setting identity to each cluster
+#Myeloid cells don't include neutrophils. The neutrophils are in a single cluster.
+
+current.cluster.ids <- c(0, 1, 2, 3, 4, 5, 6, 7,8,9,10,11,12,13,14,15,16,17,18,19,20,21)
+new.cluster.ids <- c("Endothelial Cells",
+"Endothelial Cells",
+"Endothelial Cells",
+
+"Satellite Cells",
+
+"Tenocytes",
+"Neutrophils",
+"FAPs",
+
+"Smooth Muscle Cells",
+"Monocytes/Macrophages",
+"Endothelial Cells",
+"Satellite Cells",
+"Neutrophils",
+"Endothelial Cells",
+"B Cells",
+"Schwann Cells",
+"Monocytes/Macrophages",
+"Smooth Muscle Cells",
+"Unknown",
+"Schwann Cells",
+"Neutrophils",
+"NK/T Cells",
+"Unknown"
+)
+data.integrated_homeo@meta.data$cellid <- data.integrated_homeo@meta.data$seurat_clusters
+data.integrated_homeo@meta.data[["cellid"]] <- plyr::mapvalues(x = data.integrated_homeo@meta.data[["cellid"]], from = current.cluster.ids, to = new.cluster.ids)
+```
+
+```{r fig.height=4, fig.width=10}
+#Fig.2A
+
+
+color.vector <- c( "#984EA3","#FF7F00" ,"#F781BF","#A65628","#377EB8","#1B9E77","#E41A1C","#8DD3C7" ,"#Acba9d", "#666666" ,"#d78a7d")
+
+##  #346570
+
+DimPlot(data.integrated_homeo, reduction = "umap", pt.size = 0.15, label = F, cols = color.vector,group.by="cellid",split.by="sample",repel=T)
+
+
+
+table(data.integrated_homeo@meta.data$cellid, data.integrated_homeo@meta.data$sample)
+```
+
+```{r fig.height=4, fig.width=11.5}
+#Plot the expression patterns of some key markers
+DotPlot(data.integrated_homeo,group.by="cellid",features=c("Pecam1","Cdh5","Pax7","Myod1","Scx","Tnmd","Fmod","Retnlg","Ly6g","Pdgfra","Myl9","Cd68","Ms4a6c","Adgre1","Mrc1","Cd19","Vpreb3","Mpz","Cd3g","Nkg7","Ly6c2"),  cols = c("lightgrey", "#35553B"))+ RotatedAxis() + ylab(NULL)+xlab('Gene') +  theme(
+
+                    axis.title.x = element_text(size = 16),
+                    axis.text.y = element_text(size = 16),
+                    axis.text.x = element_text(size = 16))
+```
+
+```{r}
+#Setting identity to each cluster
+#Myeloid cells don't include neutrophils. The neutrophils are in a single cluster.
+
+current.cluster.ids <- c("Endothelial Cells",
+"Satellite Cells",
+"Tenocytes",
+"Neutrophils",
+"FAPs",
+"Smooth Muscle Cells",
+"Monocytes/Macrophages",
+"B Cells",
+"Schwann Cells",
+"Unknown",
+"NK/T Cells")
+
+new.cluster.ids <- c("EC",
+"SC",
+"Teno",
+"Neut",
+"FAP",
+"SMC",
+"Mo/Mφ",
+"B",
+"Sch",
+"Unk",
+"NK/T"
+)
+data.integrated_homeo@meta.data$shortid <- data.integrated_homeo@meta.data$cellid
+data.integrated_homeo@meta.data[["shortid"]] <- plyr::mapvalues(x = data.integrated_homeo@meta.data[["shortid"]], from = current.cluster.ids, to = new.cluster.ids)
+```
+
+```{r fig.height=8, fig.width=10}
+#Fig.S2E
+
+DefaultAssay(data.integrated_homeo) <- "RNA"
+Idents(data.integrated_homeo) <- "cellid"
+homeo_markers_all_RNA <- FindAllMarkers(object = data.integrated_homeo, only.pos = T, min.pct = 0.25, logfc.threshold = 0.25) 
+
+pval <- homeo_markers_all_RNA[,c(1)]
+adj_p <- p.adjust(pval, method = "BH", n = length(pval))
+
+homeo_markers_all_RNA$adj_pval <- adj_p
+
+homeo_markers_all_RNA_subset <- homeo_markers_all_RNA %>% filter(adj_pval <= 0.05)
+
+
+top10 <- homeo_markers_all_RNA_subset %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+
+
+
+
+DoHeatmap(data.integrated_homeo, features = top10$gene,group.colors=c( "#984EA3","#FF7F00" ,"#F781BF","#A65628","#377EB8","#1B9E77","#E41A1C","#8DD3C7" ,"#Acba9d", "#666666" ,"#d78a7d")
+          ) + scale_fill_gradientn(colors = c("blue", "white", "red"))
+```

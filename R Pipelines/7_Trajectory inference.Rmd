@@ -1,0 +1,119 @@
+```{r}
+set.seed(1234)
+
+library(monocle3)
+library(SeuratWrappers)
+library(Seurat)
+library(ggplot2)
+library(tidyverse)
+```
+
+
+```{r fig.height=3, fig.width=8}
+cds <- as.cell_data_set(Neu_homeo_sub, assay = "RNA")
+cds <- estimate_size_factors(cds)
+cds <- preprocess_cds(cds, num_dim = 50)
+
+cds <- reduce_dimension(cds)
+
+
+cds <- cluster_cells(cds,reduction_method ="UMAP")
+cds@rowRanges@elementMetadata@listData[["gene_short_name"]] <- rownames(Neu_homeo_sub[["RNA"]])
+
+
+# cds <- learn_graph(cds)
+cds <- learn_graph(cds,learn_graph_control=list(ncenter=1000))
+
+
+
+get_earliest_principal_node <- function(cds, time_bin=c("Immature Neutrophils")){
+  cell_ids <- which(colData(cds)[, "cellid"] == time_bin)
+  
+  closest_vertex <-
+  cds@principal_graph_aux[["UMAP"]]$pr_graph_cell_proj_closest_vertex
+  closest_vertex <- as.matrix(closest_vertex[colnames(cds), ])
+  root_pr_nodes <-
+  igraph::V(principal_graph(cds)[["UMAP"]])$name[as.numeric(names
+  (which.max(table(closest_vertex[cell_ids,]))))]
+  
+  root_pr_nodes
+}
+
+
+cds <- order_cells(cds, root_pr_nodes=get_earliest_principal_node(cds))
+
+
+plot_cells(cds,
+           color_cells_by = "pseudotime",
+           label_cell_groups=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE,
+             label_roots = FALSE,
+           graph_label_size=1.5,  show_trajectory_graph = F,cell_size=0.8)+
+    facet_wrap(~sample, nrow = 1)+
+  theme(#legend.position = "none",    
+      axis.text.x = element_text(color = "black",size=14), 
+    axis.text.y = element_text(color = "black",size=14),
+    axis.title.x = element_text(color = "black",size=14),
+    axis.title.y = element_text(color = "black",size=14),legend.text = element_text(size = 12),    # Adjust the size of the legend text
+    legend.title = element_text(size = 14),  
+    panel.grid.major = element_blank(),  # Remove major grid lines
+    panel.grid.minor = element_blank(), strip.text = element_text(size = 14))
+
+
+plot_cells(cds, label_groups_by_cluster=FALSE,  color_cells_by = "cellid",cell_size=0.6,label_branch_points=F,label_leaves=F,trajectory_graph_segment_size = 0.5, show_trajectory_graph = F,group_label_size = 3,label_cell_groups = F)+
+    facet_wrap(~sample, nrow = 1)+
+    scale_color_manual(values =c( '#6a3d9a','#71b7ed','#84c3b7','#f57c6e'))+
+  theme(#legend.position = "none",  
+    axis.line.x = element_line(size = 0.5),  
+          axis.ticks.x = element_line(size = 0.5) , 
+     axis.line.y = element_line(size = 0.5),  
+          axis.ticks.y = element_line(size = 0.5) , 
+      axis.text.x = element_text(color = "black",size=16), 
+    axis.text.y = element_text(color = "black",size=16),
+    axis.title.x = element_text(color = "black",size=16),
+    axis.title.y = element_text(color = "black",size=16),legend.text = element_text(size = 16),    # Adjust the size of the legend text
+    legend.title = element_blank(),  
+    panel.grid.major = element_blank(),  # Remove major grid lines
+    panel.grid.minor = element_blank(), strip.text = element_text(size = 16))+xlim(-6.5,6.5)
+
+```
+
+```{r fig.height=10}
+Neu_genes <- c("Ngp","Camp","Ltf","Ccl6","Cxcl2","Il1b")
+
+cds <- cds[rowData(cds)$gene_short_name %in% Neu_genes,
+                      ]
+
+plot_genes_in_pseudotime(cds,
+                         color_cells_by="sample",
+                         min_expr=0.5, cell_size = 0.5, panel_order = c("Ngp","Camp","Ltf","Ccl6","Cxcl2","Il1b"))+
+  theme(#legend.position = "none",    
+      axis.text.x = element_text(color = "black",size=16), 
+    axis.text.y = element_text(color = "black",size=16),
+    axis.title.x = element_text(color = "black",size=16),
+    axis.title.y = element_text(color = "black",size=16),
+    panel.grid.major = element_blank(),  # Remove major grid lines
+    panel.grid.minor = element_blank(), strip.text = element_text(size = 14),legend.text = element_text(size = 12),    # Adjust the size of the legend text
+    legend.title = element_text(size = 14))+ scale_color_manual(values = c( "Depleted" = "red", "Control" = "blue"))
+```
+
+
+```{r fig.height=4, fig.width=7}
+cds$monocle3_pseudotime <- pseudotime(cds)
+data.pseudo <- as.data.frame(colData(cds))
+
+data.pseudo$cellid <- factor(data.pseudo$cellid, levels = rev(c("Proliferating Neutrophils","Immature Neutrophils","Intermediate","Mature Neutrophils")))
+
+ggplot(data.pseudo, aes(monocle3_pseudotime,cellid, fill = cellid)) + geom_boxplot()+theme_minimal()+theme(panel.grid.major = element_blank(),  # Remove major grid lines
+    panel.grid.minor = element_blank(),axis.text.x = element_text(color = "black",size=16), 
+    axis.text.y = element_text(color = "black",size=16),
+    axis.title.x = element_text(color = "black",size=16),
+    axis.title.y = element_text(color = "black",size=16))+
+  labs(x="Pseudotime",
+    y = " "
+  )+  scale_fill_manual(values = c( "Proliferating Neutrophils" = "#f57c6e", "Immature Neutrophils" = "#71b7ed","Intermediate"="#84c3b7","Mature Neutrophils"="#6a3d9a"))
+
+
+```
+

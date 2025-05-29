@@ -1,0 +1,427 @@
+```{r}
+Idents(data.integrated_homeo) <- "cellid"
+FAP_homeo_sub <- subset(data.integrated_homeo,idents="FAPs")
+
+FAP_homeo_sub <- NormalizeData(FAP_homeo_sub, verbose = T)
+FAP_homeo_sub <- FindVariableFeatures(FAP_homeo_sub, selection.method = "vst", nfeatures = 2500, verbose = T)
+FAP_homeo_sub <- ScaleData(FAP_homeo_sub, verbose = T, features = rownames(FAP_homeo_sub))
+FAP_homeo_sub <- RunPCA(FAP_homeo_sub, pc.genes = FAP_homeo_sub@var.genes, npcs = 30, verbose = T)
+ElbowPlot(FAP_homeo_sub, ndims = 30)
+```
+
+
+```{r}
+FAP_homeo_sub  <- FindNeighbors(FAP_homeo_sub ,  dims = 1:15)
+FAP_homeo_sub  <- FindClusters(FAP_homeo_sub , resolution = 0.4)
+
+FAP_homeo_sub <- RunUMAP(FAP_homeo_sub , dims = 1:15, metric = 'euclidean')
+```
+
+```{r fig.height=4, fig.width=5}
+## Plotting and having a look at the data
+
+color.vector <- c( '#f57c6e','#71b7ed','#84c3b7','#6a3d9a')
+
+DimPlot(FAP_homeo_sub, reduction = "umap", pt.size = 1, label = T, cols = color.vector,repel=T,group.by="seurat_clusters")+theme(legend.position = "none")
+DimPlot(FAP_homeo_sub, reduction = "umap", pt.size = 1, label = F, cols = c("blue","red"),repel=T,group.by="sample")+theme(legend.position = "none")
+
+
+table(FAP_homeo_sub@meta.data$cellid, FAP_homeo_sub@meta.data$sample)
+```
+
+
+```{r}
+Idents(data.integrated_homeo) <- "cellid"
+SC_homeo_sub <- subset(data.integrated_homeo,idents="Satellite Cells")
+
+SC_homeo_sub <- NormalizeData(SC_homeo_sub, verbose = T)
+SC_homeo_sub <- FindVariableFeatures(SC_homeo_sub, selection.method = "vst", features = 2500, verbose = T)
+SC_homeo_sub <- ScaleData(SC_homeo_sub, verbose = T, features = rownames(SC_homeo_sub))
+SC_homeo_sub <- RunPCA(SC_homeo_sub, pc.genes = SC_homeo_sub@var.genes, npcs = 30, verbose = T)
+ElbowPlot(SC_homeo_sub, ndims = 30)
+```
+
+
+```{r}
+SC_homeo_sub  <- FindNeighbors(SC_homeo_sub ,  dims = 1:10)
+SC_homeo_sub  <- FindClusters(SC_homeo_sub , resolution = 0.4)
+
+SC_homeo_sub <- RunUMAP(SC_homeo_sub , dims = 1:10, metric = 'euclidean')
+```
+
+
+```{r fig.height=6}
+DefaultAssay(SC_homeo_sub) <- "RNA"
+Idents(SC_homeo_sub) <- "seurat_clusters"
+SC_homeo_markers_all_RNA <- FindAllMarkers(object = SC_homeo_sub, only.pos = T, min.pct = 0.25, logfc.threshold = 0.25)
+
+pval <- SC_homeo_markers_all_RNA[,c(1)]
+adj_p <- p.adjust(pval, method = "BH", n = length(pval))
+
+SC_homeo_markers_all_RNA$adj_pval <- adj_p
+
+SC_homeo_markers_all_RNA_subset <- SC_homeo_markers_all_RNA %>% filter(adj_pval <= 0.05)
+
+
+top10 <- SC_homeo_markers_all_RNA_subset %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+
+
+
+
+DoHeatmap(SC_homeo_sub, features = top10$gene,group.colors=c( '#f57c6e','#f2b56f','#84c3b7','#88d8db','#71b7ed')) + scale_fill_gradientn(colors = c("blue", "white", "red"))
+```
+
+
+
+
+```{r fig.height=4, fig.width=8}
+## Plotting and having a look at the data
+
+color.vector <- c( '#f57c6e','#f2b56f','#84c3b7','#88d8db','#71b7ed')
+
+DimPlot(SC_homeo_sub, reduction = "umap", pt.size = 1, label = F, cols = color.vector,repel=T,split.by="sample",group.by="seurat_clusters")+theme(legend.position="none",    axis.text.x = element_text(color = "black",size=14), 
+    axis.text.y = element_text(color = "black",size=14),
+     axis.title.x = element_text(size = 14),  
+    axis.title.y = element_text(size = 14) , strip.text = element_text(size = 14))
+
+
+
+table(SC_homeo_sub@meta.data$cellid, SC_homeo_sub@meta.data$sample)
+```
+
+
+
+
+
+```{r}
+Idents(data.integrated_homeo) <- "cellid"
+MC_homeo_all <- subset(data.integrated_homeo,idents="Monocytes/Macrophages")
+
+MC_homeo_all <- NormalizeData(MC_homeo_all, verbose = T)
+MC_homeo_all <- FindVariableFeatures(MC_homeo_all, selection.method = "vst", nfeatures = 2500, verbose = T)
+MC_homeo_all <- ScaleData(MC_homeo_all, verbose = T, features = rownames(MC_homeo_all))
+MC_homeo_all <- RunPCA(MC_homeo_all, pc.genes = MC_homeo_all@var.genes, npcs = 30, verbose = T)
+ElbowPlot(MC_homeo_all, ndims = 30)
+```
+
+
+```{r}
+MC_homeo_all  <- FindNeighbors(MC_homeo_all ,  dims = 1:17)
+MC_homeo_all  <- FindClusters(MC_homeo_all , resolution = 0.6)
+
+MC_homeo_all <- RunUMAP(MC_homeo_all , dims = 1:17, metric = 'euclidean')
+```
+
+
+```{r}
+#Setting identity to each cluster
+#Myeloid cells don't include neutrophils. The neutrophils are in a single cluster.
+
+current.cluster.ids <- c(0, 1, 2, 3, 4, 5,6)
+new.cluster.ids <- c(
+  "Mφ",
+    "IFNγ-sensitive Mφ",
+  "Infiltrating Mo",
+
+  "Tissue-resident Mφ",
+  "IFNβ-sensitive Mφ",
+    "Unidentified",
+  "Unidentified"
+
+
+)
+MC_homeo_all@meta.data$cellid <- MC_homeo_all@meta.data$seurat_clusters
+MC_homeo_all@meta.data[["cellid"]] <- plyr::mapvalues(x = MC_homeo_all@meta.data[["cellid"]], from = current.cluster.ids, to = new.cluster.ids)
+
+
+```
+
+```{r fig.height=8}
+DefaultAssay(MC_homeo_all) <- "RNA"
+Idents(MC_homeo_all) <- "cellid"
+MC_homeo_markers_all_RNA <- FindAllMarkers(object = MC_homeo_all, only.pos = T, min.pct = 0.25, logfc.threshold = 0.25)
+
+pval <- MC_homeo_markers_all_RNA[,c(1)]
+adj_p <- p.adjust(pval, method = "BH", n = length(pval))
+
+MC_homeo_markers_all_RNA$adj_pval <- adj_p
+
+MC_homeo_markers_all_RNA_subset <-MC_homeo_markers_all_RNA %>% filter(adj_pval <= 0.05)
+
+
+top10 <- MC_homeo_markers_all_RNA_subset %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+
+
+
+top10$cluster <- factor(top10$cluster, levels = c("Infiltrating Mo", "IFNγ-sensitive Mφ", "IFNβ-sensitive Mφ", "Tissue-resident Mφ", "Mφ","Unidentified"))
+
+# Sort the data frame by 'Column2'
+top10 <- top10[order(top10$cluster), ]
+
+
+MC_homeo_all@active.ident <- factor(MC_homeo_all@active.ident,  levels=c("Infiltrating Mo", "IFNγ-sensitive Mφ", "IFNβ-sensitive Mφ", "Tissue-resident Mφ", "Mφ","Unidentified")) 
+
+
+DoHeatmap(MC_homeo_all, features = top10$gene,group.color=c('#f57c6e','#f2b56f','#84c3b7','#71b7ed','#6a3d9a','#666666'),) + scale_fill_gradientn(colors = c("blue", "white", "red"))
+```
+
+
+
+
+
+```{r fig.height=4, fig.width=8}
+## Plotting and having a look at the data
+
+color.vector <- c( '#f57c6e','#f2b56f','#84c3b7','#71b7ed','#6a3d9a','#666666','#b8aeeb','#b5838d')
+
+
+DimPlot(MC_homeo_all, reduction = "umap", pt.size = 1, label = F, cols = color.vector,repel=T,split.by="sample",group.by="cellid",order=rev(c("Infiltrating Mo", "IFNγ-sensitive Mφ", "IFNβ-sensitive Mφ", "Tissue-resident Mφ", "Mφ","Unidentified")))+theme(legend.position="none",    axis.text.x = element_text(color = "black",size=14), 
+    axis.text.y = element_text(color = "black",size=14),
+     axis.title.x = element_text(size = 14),  
+    axis.title.y = element_text(size = 14) , strip.text = element_text(size = 14))
+
+
+
+table(MC_homeo_all@meta.data$cellid, MC_homeo_all@meta.data$sample)
+```
+
+
+
+```{r}
+Idents(data.integrated_homeo) <- "cellid"
+Neu_homeo_sub <- subset(data.integrated_homeo,idents="Neutrophils")
+
+Neu_homeo_sub <- NormalizeData(Neu_homeo_sub, verbose = T)
+Neu_homeo_sub <- FindVariableFeatures(Neu_homeo_sub, selection.method = "vst", nfeatures = 2500, verbose = T)
+Neu_homeo_sub <- ScaleData(Neu_homeo_sub, verbose = T, features = rownames(Neu_homeo_sub))
+Neu_homeo_sub <- RunPCA(Neu_homeo_sub, pc.genes = Neu_homeo_sub@var.genes, npcs = 30, verbose = T)
+ElbowPlot(Neu_homeo_sub, ndims = 30)
+```
+
+
+```{r}
+Neu_homeo_sub  <- FindNeighbors(Neu_homeo_sub ,  dims = 1:10)
+Neu_homeo_sub  <- FindClusters(Neu_homeo_sub , resolution = 0.4)
+
+Neu_homeo_sub <- RunUMAP(Neu_homeo_sub , dims = 1:10, metric = 'euclidean')
+```
+
+
+```{r}
+#Setting identity to each cluster
+#Myeloid cells don't include neutrophils. The neutrophils are in a single cluster.
+
+current.cluster.ids <- c(0, 1, 2, 3, 4, 5)
+new.cluster.ids <- c(
+  "Mature Neutrophils",
+  "Immature Neutrophils",
+  "Intermediate",
+  "Immature Neutrophils",
+  "Proliferating Neutrophils",
+    "Intermediate"
+
+)
+Neu_homeo_sub@meta.data$cellid <- Neu_homeo_sub@meta.data$seurat_clusters
+Neu_homeo_sub@meta.data[["cellid"]] <- plyr::mapvalues(x = Neu_homeo_sub@meta.data[["cellid"]], from = current.cluster.ids, to = new.cluster.ids)
+
+
+
+```
+
+```{r fig.height=4}
+DefaultAssay(Neu_homeo_sub) <- "RNA"
+Idents(Neu_homeo_sub) <- "cellid"
+Neu_homeo_markers_all_RNA <- FindAllMarkers(object = Neu_homeo_sub, only.pos = T, min.pct = 0.25, logfc.threshold = 0.25, test.use = "LR")
+
+Neu_homeo_markers_all_RNA_subset <- Neu_homeo_markers_all_RNA %>% filter(p_val_adj <= 0.05)
+Neu_homeo_markers_all_RNA_subset <- Neu_homeo_markers_all_RNA_subset %>% filter(pct.2 <= 0.5)
+
+
+top10 <- Neu_homeo_markers_all_RNA_subset %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+
+
+
+DoHeatmap(Neu_homeo_sub, features = top10$gene) + scale_fill_gradientn(colors = c("blue", "white", "red"))
+```
+
+
+```{r fig.height=4, fig.width=8}
+## Plotting and having a look at the data
+
+color.vector <- c( '#f57c6e','#71b7ed','#84c3b7','#6a3d9a')
+
+DimPlot(Neu_homeo_sub, reduction = "umap", pt.size = 1, label = F, cols = color.vector,repel=T,split.by="sample",group.by="cellid",order=c("Mature Neutrophils","Intermediate","Immature Neutrophils","Proliferating Neutrophils"))+theme(legend.position="none",    axis.text.x = element_text(color = "black",size=14), 
+    axis.text.y = element_text(color = "black",size=14),
+     axis.title.x = element_text(size = 14),  
+    axis.title.y = element_text(size = 14) , strip.text = element_text(size = 14))+xlim(-10,6)
+
+
+
+table(Neu_homeo_sub@meta.data$cellid, Neu_homeo_sub@meta.data$sample)
+```
+
+
+
+
+
+```{r}
+Idents(data.integrated_inj) <- "cellid"
+SC_inj_sub <- subset(data.integrated_inj,idents="Satellite Cells")
+
+SC_inj_sub <- NormalizeData(SC_inj_sub, verbose = T)
+SC_inj_sub <- FindVariableFeatures(SC_inj_sub, selection.method = "vst", nfeatures = 2500, verbose = T)
+SC_inj_sub <- ScaleData(SC_inj_sub, verbose = T, features = rownames(SC_inj_sub))
+SC_inj_sub <- RunPCA(SC_inj_sub, pc.genes = SC_inj_sub@var.genes, npcs = 30, verbose = T)
+ElbowPlot(SC_inj_sub, ndims = 30)
+```
+
+
+```{r}
+SC_inj_sub  <- FindNeighbors(SC_inj_sub ,  dims = 1:15)
+SC_inj_sub  <- FindClusters(SC_inj_sub , resolution = 0.4)
+
+SC_inj_sub <- RunUMAP(SC_inj_sub , dims = 1:15, metric = 'euclidean')
+```
+
+
+
+
+
+```{r fig.height=6}
+DefaultAssay(SC_inj_sub) <- "RNA"
+Idents(SC_inj_sub) <- "seurat_clusters"
+SC_inj_markers_all_RNA <- FindAllMarkers(object = SC_inj_sub, only.pos = T, min.pct = 0.25, logfc.threshold = 0.25)
+
+pval <- SC_inj_markers_all_RNA[,c(1)]
+adj_p <- p.adjust(pval, method = "BH", n = length(pval))
+
+SC_inj_markers_all_RNA$adj_pval <- adj_p
+
+SC_inj_markers_all_RNA_subset <-SC_inj_markers_all_RNA %>% filter(adj_pval <= 0.05)
+
+
+top10 <- SC_inj_markers_all_RNA_subset %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+
+
+
+
+DoHeatmap(SC_inj_sub, features = top10$gene,group.colors = c( '#f57c6e','darkgreen','#71b7ed','#6a3d9a','#E78E2B')) + scale_fill_gradientn(colors = c("blue", "white", "red"))
+```
+
+
+
+
+```{r fig.height=3, fig.width=6}
+## Plotting and having a look at the data
+
+color.vector <- c( '#f57c6e','#71b7ed','#84c3b7','#6a3d9a')
+
+DimPlot(SC_inj_sub, reduction = "umap", pt.size = 1, label = F, cols = color.vector,repel=T,split.by="sample",group.by="cellid")+theme(axis.text.x = element_text(color = "black",size=14), 
+    axis.text.y = element_text(color = "black",size=14),
+     axis.title.x = element_text(size = 14),  
+    axis.title.y = element_text(size = 14))
+
+
+
+table(SC_inj_sub@meta.data$cellid, SC_inj_sub@meta.data$sample)
+```
+
+
+
+```{r}
+Idents(data.integrated_inj) <- "cellid"
+MC_DC_inj_sub <- subset(data.integrated_inj,idents=c("Monocytes/Macrophages","Antigen-presenting Cells"))
+
+MC_DC_inj_sub <- NormalizeData(MC_DC_inj_sub, verbose = T)
+MC_DC_inj_sub <- FindVariableFeatures(MC_DC_inj_sub, selection.method = "vst", nfeatures = 2500, verbose = T)
+MC_DC_inj_sub <- ScaleData(MC_DC_inj_sub, verbose = T, features = rownames(MC_DC_inj_sub))
+MC_DC_inj_sub <- RunPCA(MC_DC_inj_sub, pc.genes = MC_DC_inj_sub@var.genes, npcs = 30, verbose = T)
+ElbowPlot(MC_DC_inj_sub, ndims = 30)
+```
+
+
+```{r}
+MC_DC_inj_sub  <- FindNeighbors(MC_DC_inj_sub ,  dims = 1:17)
+MC_DC_inj_sub  <- FindClusters(MC_DC_inj_sub , resolution = 1.0)
+
+MC_DC_inj_sub <- RunUMAP(MC_DC_inj_sub , dims = 1:17, metric = 'euclidean')
+```
+
+
+
+```{r fig.height=14}
+DefaultAssay(MC_DC_inj_sub) <- "RNA"
+Idents(MC_DC_inj_sub) <- "seurat_clusters"
+MC_inj_markers_all_RNA <- FindAllMarkers(object = MC_DC_inj_sub, only.pos = T, min.pct = 0.25, logfc.threshold = 0.25)
+
+pval <- MC_inj_markers_all_RNA[,c(1)]
+adj_p <- p.adjust(pval, method = "BH", n = length(pval))
+
+MC_inj_markers_all_RNA$adj_pval <- adj_p
+
+MC_inj_markers_all_RNA_subset <-MC_inj_markers_all_RNA %>% filter(adj_pval <= 0.05)
+
+
+top10 <- MC_inj_markers_all_RNA_subset %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+
+
+
+
+DoHeatmap(MC_DC_inj_sub, features = top10$gene) + scale_fill_gradientn(colors = c("blue", "white", "red"))
+```
+
+
+```{r}
+#Setting identity to each cluster
+#Myeloid cells don't include neutrophils. The neutrophils are in a single cluster.
+
+
+current.cluster.ids <- c(0, 1, 2, 3, 4, 5,6,7,8,9,10,11,12,13)
+new.cluster.ids <- c(
+  "Gpnmb+ Mφ",
+    "Gpnmb+ Mφ",
+"Mo/Inflam. Mφ",
+"Regen. Mφ",
+"Gpnmb+ Mφ",
+"Mo/Inflam. Mφ",
+"Mo/Inflam. Mφ",
+"Mo/Inflam. Mφ",
+"Regen. Mφ",
+"Mo/Inflam. Mφ",
+"APC",
+  "Gpnmb+ Mφ",
+"Regen. Mφ",
+"Mo/Inflam. Mφ"
+)
+MC_DC_inj_sub@meta.data$cellid <- MC_DC_inj_sub@meta.data$seurat_clusters
+MC_DC_inj_sub@meta.data[["cellid"]] <- plyr::mapvalues(x = MC_DC_inj_sub@meta.data[["cellid"]], from = current.cluster.ids, to = new.cluster.ids)
+```
+
+
+
+```{r fig.height=4, fig.width=4.75}
+## Plotting and having a look at the data
+
+color.vector <- c( '#f57c6e','#f2b56f','#84c3b7','#71b7ed')
+
+color.vector <- c( '#f57c6e','#f2b56f','#84c3b7','#71b7ed')
+
+
+
+DimPlot(MC_DC_inj_sub, reduction = "umap",shuffle=T, pt.size = 0.8, label = F, repel=T,split.by="sample",cols=color.vector,group.by="cellid",order=rev(c(
+
+ "Mo/Inflam. Mφ",
+ "Gpnmb+ Mφ",
+  "Regen. Mφ",
+ "APC"
+   )))+theme( axis.text.x = element_text(color = "black",size=14), 
+    axis.text.y = element_text(color = "black",size=14),
+     axis.title.x = element_text(size = 14),  
+    axis.title.y = element_text(size = 14))
+
+
+
+table(MC_DC_inj_sub@meta.data$cellid, MC_DC_inj_sub@meta.data$sample)
+```
+
+

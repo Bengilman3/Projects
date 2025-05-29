@@ -1,0 +1,334 @@
+
+```{r}
+# library(nichenetr)
+library(Seurat)
+library(SeuratObject)
+library(tidyverse)
+```
+
+```{r}
+Idents(data.integrated_inj) <- "cellid"
+seuratObj <- data.integrated_inj
+
+
+```
+
+```{r}
+organism <- "mouse"
+
+
+  lr_network <- readRDS(url("https://zenodo.org/record/7074291/files/lr_network_mouse_21122021.rds"))
+  ligand_target_matrix <- readRDS(url("https://zenodo.org/record/7074291/files/ligand_target_matrix_nsga2r_final_mouse.rds"))
+  weighted_networks <- readRDS(url("https://zenodo.org/record/7074291/files/weighted_networks_nsga2r_final_mouse.rds"))
+
+
+lr_network <- lr_network %>% distinct(from, to)
+head(lr_network)
+
+ligand_target_matrix[1:5,1:5] 
+
+head(weighted_networks$lr_sig) 
+head(weighted_networks$gr) 
+
+```
+
+```{r}
+#"Endothelial Cells","Satellite Cells","Tenocytes","Antigen-presenting Cells","Monocytes/Macrophages","Neutrophils"
+receiver = c("Satellite Cells")
+
+expressed_genes_receiver <- rownames(FindMarkers(subset(seuratObj,subset=sample=="Control"),ident.1=c("Satellite Cells"),min.pct = 0.1,logfc.threshold = 0) )
+
+all_receptors <- unique(lr_network$to)  
+expressed_receptors <- intersect(all_receptors, expressed_genes_receiver)
+
+potential_ligands <- lr_network %>% filter(to %in% expressed_receptors) %>% pull(from) %>% unique()
+```
+
+```{r}
+find_marker_genes <- function(seuratObj, ident.1) {
+  markers <- FindMarkers(seuratObj, ident.1 = ident.1, min.pct = 0.1, logfc.threshold = 0)
+  pct_expr <- rowMeans(GetAssayData(seuratObj, layer = "data")[rownames(markers), WhichCells(seuratObj, idents = ident.1)] > 0)
+  markers <- markers[pct_expr >= 0.10, ]
+  marker_genes <- rownames(markers)
+  return(marker_genes)
+}
+```
+
+
+
+```{r}
+#sender_celltypes <- c("FAPs","Satellite Cells","Tenocytes","Smooth Muscle Cells","Schwann Cells","Neutrophils","NK Cells/T Cells","Endothelial Cells","B Cells")
+sender_celltypes <- c("FAPs")
+
+
+marker_genes_list <- lapply(sender_celltypes, function(ident) find_marker_genes(subset(seuratObj,subset=sample=="Control"), ident))
+
+expressed_genes_sender <- marker_genes_list %>% unlist() %>% unique()
+
+potential_ligands_focused <- intersect(potential_ligands, expressed_genes_sender)
+```
+
+```{r}
+seurat_obj_receiver <- subset(seuratObj, idents = receiver)
+
+DE_table_receiver <-  FindMarkers(object = seurat_obj_receiver,
+                                  ident.1 = "Depleted", ident.2 = "Control",
+                                  group.by = "sample",
+                                  min.pct = 0.05) %>% rownames_to_column("gene")
+
+pval <- DE_table_receiver[,c(2)]
+adj_p <- p.adjust(pval, method = "BH", n = length(pval))
+
+DE_table_receiver$adj_pval <- adj_p
+
+
+geneset_oi <- DE_table_receiver %>% filter(adj_pval <= 0.05 & abs(avg_log2FC) >= 0.5) %>% pull(gene)
+geneset_oi <- geneset_oi %>% .[. %in% rownames(ligand_target_matrix)]
+
+background_expressed_genes <- expressed_genes_receiver %>% .[. %in% rownames(ligand_target_matrix)]
+```
+
+
+```{r}
+ligand_activities <- predict_ligand_activities(geneset = geneset_oi,
+                                               background_expressed_genes = background_expressed_genes,
+                                               ligand_target_matrix = ligand_target_matrix,
+                                               potential_ligands = potential_ligands_focused)
+
+
+
+
+ligand_activities <- ligand_activities %>% arrange(-aupr_corrected) %>% mutate(rank = rank(dplyr::desc(aupr_corrected)))
+ligand_activities
+```
+
+```{r}
+p_hist_lig_activity <- ggplot(ligand_activities, aes(x=aupr_corrected)) + 
+  geom_histogram(color="black", fill="darkorange")  + 
+  geom_vline(aes(xintercept=min(ligand_activities %>% top_n(10, aupr_corrected) %>% pull(aupr_corrected))),
+             color="red", linetype="dashed", size=1) + 
+  labs(x="ligand activity (PCC)", y = "# ligands") +
+  theme_classic()
+
+p_hist_lig_activity
+
+best_upstream_ligands <- ligand_activities %>% top_n(10, aupr_corrected) %>% arrange(-aupr_corrected) %>% pull(test_ligand)
+```
+
+```{r fig.height=4, fig.width=3.7}
+tb <- tibble(a = 1:10, b = 10:1, c = rep(1:2, 5))
+vis_ligand_aupr <- ligand_activities %>% filter(test_ligand %in% best_upstream_ligands) %>%
+  column_to_rownames("test_ligand") %>% dplyr::select(aupr_corrected) %>% arrange(aupr_corrected) %>% as.matrix(ncol = 1)
+
+p_ligand_aupr <- make_heatmap_ggplot(vis_ligand_aupr,
+                     "Prioritized ligands", "Ligand activity", 
+                     legend_title = "AUPR", color = "darkorange") + 
+    theme(axis.text.x=element_text(colour="black",size=16),axis.text.y=element_text(colour="black",size=15),axis.text.x.top = element_blank(),legend.key.size = unit(1, "cm")) 
+
+
+make_heatmap_ggplot(vis_ligand_aupr,
+                     "Prioritized ligands", "Ligand activity", 
+                     legend_title = "AUPR", color = "darkorange") + 
+    theme(axis.text.x=element_text(colour="black",size=16),axis.text.y=element_text(colour="black",size=15),axis.text.x.top = element_blank(),legend.key.size = unit(1, "cm"))  
+
+```
+```{r}
+active_ligand_target_links_df <- best_upstream_ligands %>%
+  lapply(get_weighted_ligand_target_links,
+         geneset = geneset_oi,
+         ligand_target_matrix = ligand_target_matrix,
+         n = 120) %>%
+  bind_rows() %>% drop_na()
+
+nrow(active_ligand_target_links_df)
+
+head(active_ligand_target_links_df)
+
+```
+```{r fig.height=4, fig.width=8}
+active_ligand_target_links <- prepare_ligand_target_visualization(
+  ligand_target_df = active_ligand_target_links_df,
+  ligand_target_matrix = ligand_target_matrix,
+  cutoff = 0.25) 
+
+nrow(active_ligand_target_links)
+## [1] 86
+head(active_ligand_target_links)
+
+order_ligands <- intersect(best_upstream_ligands, colnames(active_ligand_target_links)) %>% rev()
+order_targets <- active_ligand_target_links_df$target %>% unique() %>% intersect(rownames(active_ligand_target_links))
+
+vis_ligand_target <- t(active_ligand_target_links[order_targets,order_ligands])
+
+p_ligand_target <- make_heatmap_ggplot(vis_ligand_target, "Prioritized ligands", "Predicted target genes",
+                    color = "purple", legend_title = "Regulatory potential") +
+  scale_fill_gradient2(low = "whitesmoke",  high = "purple")+ theme(axis.text.x=element_text(colour="black"),axis.text.y=element_text(colour="black"))+xlab("")
+
+make_heatmap_ggplot(vis_ligand_target, "Prioritized ligands", "Predicted target genes",
+                    color = "purple", legend_title = "Regulatory potential") +
+  scale_fill_gradient2(low = "whitesmoke",  high = "purple")+ theme(axis.text.x=element_text(colour="black"),axis.text.y=element_text(colour="black"))+xlab("")
+```
+
+
+```{r fig.height=4, fig.width=2}
+p_ligand_target2 <- make_heatmap_ggplot(vis_ligand_target, "Prioritized ligands", "Predicted target genes",
+                    color = "purple", legend_title = "Regulatory potential") +
+    scale_fill_gradient2(low = "whitesmoke",  high = "purple") + 
+    theme(axis.text.x = element_text(colour = "black"),
+          axis.text.y = element_text(colour = "black")) +
+    xlab("") +
+    coord_flip()+
+    scale_x_discrete(position = "top")+
+    scale_y_discrete(position = "right")
+
+
+flipped_rows_mat <- vis_ligand_target[nrow(vis_ligand_target):1, ]
+p_ligand_target2 <- make_heatmap_ggplot(flipped_rows_mat, "Prioritized ligands", "Predicted target genes",
+                    color = "purple", legend_title = "Regulatory potential") +
+    scale_fill_gradient2(low = "whitesmoke",  high = "purple") + 
+    theme(axis.text.x = element_text(colour = "black"),
+          axis.text.y = element_text(colour = "black")) +
+    xlab("") +
+    coord_flip()+
+    scale_x_discrete(position = "bottom")+
+    scale_y_discrete(position = "right")
+
+p_dotplot <- DotPlot(subset(seuratObj, shortid %in% c("EC",
+"SC",
+"Tenos",
+"Neu",
+"FAP",
+"Mo/Mφ",
+"DC",
+"NK/T")),
+        features = best_upstream_ligands, cols = c("white","red"),group.by="shortid") + 
+  scale_y_discrete(position = "right")+theme(axis.text.x = element_text(color = "black",angle=90))
+
+p_dotplot
+```
+
+```{r fig.height=6, fig.width=6}
+p_dotplot <- DotPlot(subset(seuratObj, shortid %in% c("EC",
+"SC",
+"Teno",
+"Neut",
+"FAP",
+"Mo/Mφ",
+"APC",
+"NK/T")),
+        features = rev(best_upstream_ligands), cols = c("white","red"),group.by="shortid") + 
+  coord_flip() +
+  scale_y_discrete(position = "right")
+
+p_dotplot
+```
+
+
+
+```{r fig.height=6, fig.width=8}
+get_weighted_ligand_receptor_links = function(best_upstream_ligands, expressed_receptors, lr_network, weighted_networks_lr_sig) {
+
+  lr_network <- lr_network %>% distinct(from, to)
+  weighted_networks_lr <- inner_join(weighted_networks_lr_sig, lr_network, by = c("from","to"))
+
+  lr_network_top <- lr_network %>% filter(from %in% best_upstream_ligands & to %in% expressed_receptors) %>% distinct(from,to)
+  best_upstream_receptors <- lr_network_top %>% pull(to) %>% unique()
+
+  lr_network_top_df_long <- weighted_networks_lr %>% filter(from %in% best_upstream_ligands & to %in% best_upstream_receptors)
+
+  return(lr_network_top_df_long)
+
+}
+
+ligand_receptor_links_df <- get_weighted_ligand_receptor_links(
+  best_upstream_ligands, expressed_receptors,
+  lr_network, weighted_networks$lr_sig) 
+
+
+prepare_ligand_receptor_visualization = function(lr_network_top_df_long, best_upstream_ligands, order_hclust = "both") {
+
+  lr_network_top_df <- lr_network_top_df_long %>% spread("from","weight",fill = 0)
+  lr_network_top_matrix = lr_network_top_df %>% dplyr::select(-to) %>% as.matrix() %>% magrittr::set_rownames(lr_network_top_df$to)
+
+  # Check if order_hclust is valid
+  if (!(order_hclust %in% c("both", "ligands", "receptors", "none"))) {
+    stop("order_hclust must be one of 'both', 'ligands', 'receptors', or 'none'")
+  }
+
+  if (order_hclust == "both" | order_hclust == "receptors") {
+    dist_receptors = dist(lr_network_top_matrix, method = "binary")
+    hclust_receptors = hclust(dist_receptors, method = "ward.D2")
+    order_receptors = hclust_receptors$labels[hclust_receptors$order]
+  }
+
+  if (order_hclust == "both" | order_hclust == "ligands") {
+    dist_ligands = dist(lr_network_top_matrix %>% t(), method = "binary")
+    hclust_ligands = hclust(dist_ligands, method = "ward.D2")
+    order_ligands_receptor = hclust_ligands$labels[hclust_ligands$order]
+  }
+
+  if (order_hclust == "none" | order_hclust == "receptors") {
+    order_ligands_receptor = rev(best_upstream_ligands)
+  }
+
+  if (order_hclust == "none" | order_hclust == "ligands") {
+    order_receptors = rownames(lr_network_top_matrix)
+  }
+
+  order_receptors = order_receptors %>% intersect(rownames(lr_network_top_matrix))
+  order_ligands_receptor = order_ligands_receptor %>% intersect(colnames(lr_network_top_matrix))
+
+  vis_ligand_receptor_network = lr_network_top_matrix[order_receptors, order_ligands_receptor]
+  rownames(vis_ligand_receptor_network) <- order_receptors
+  colnames(vis_ligand_receptor_network) <- order_ligands_receptor
+
+  return(vis_ligand_receptor_network)
+
+}
+
+vis_ligand_receptor_network <- prepare_ligand_receptor_visualization(
+  ligand_receptor_links_df,
+  best_upstream_ligands,
+  order_hclust = "both") 
+
+(make_heatmap_ggplot(t(vis_ligand_receptor_network), 
+                     y_name = "Ligands", x_name = "Receptors",  
+                     color = "mediumvioletred", legend_title = "Prior interaction potential"))
+```
+
+
+```{r fig.height=5.5, fig.width=10}
+# normal: height=5.5, fig.width=10 10.14.24
+#top10: w=11.5 height=5.5
+#top 5:fig.height=4, fig.width=11
+figures_without_legend <- cowplot::plot_grid(
+  p_dotplot + theme(legend.position = "none",
+                    axis.ticks = element_blank(),
+                    axis.title.y = element_blank(),
+                    axis.title.x = element_text(size = 14),
+                    axis.text.y = element_text(size = 14),
+                    axis.text.x = element_text(size = 14,  angle = 90, hjust = 0)) +
+    ylab(" "),
+ 
+  p_ligand_target + theme(
+                    axis.title.x = element_text(size = 16),legend.position = "none",
+                          axis.title.y = element_blank(),axis.text.y = element_text(size = 14),
+                    axis.text.x = element_text(size = 14,  angle = 90, hjust = 0)),
+  align = "hv",
+  nrow = 1,
+ rel_widths = c(0.55, 1.45))
+
+legends <- cowplot::plot_grid(
+
+    ggpubr::as_ggplot(ggpubr::get_legend(p_dotplot)),
+
+    ggpubr::as_ggplot(ggpubr::get_legend(p_ligand_target)),
+    nrow = 1,
+    align = "h", rel_widths = c(1.5, 1, 1, 1))
+
+#combined_plot <-  cowplot::plot_grid(figures_without_legend, legends, rel_heights = c(10,5), nrow = 2, align = "hv")
+combined_plot <-  cowplot::plot_grid(figures_without_legend, legends, rel_heights = c(10,5), nrow = 2, align = "hv")
+
+cowplot::plot_grid(figures_without_legend, rel_heights = c(10,5), nrow = 2, align = "hv")
+legends
+```
